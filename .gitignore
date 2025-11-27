@@ -1,0 +1,32 @@
+# CLAUDE.md - local development instructions
+CLAUDE.md
+
+# Rust build artifacts
+/target/
+Cargo.lock
+
+# Ruby
+*.gem
+*.bundle
+*.so
+*.o
+tmp/
+pkg/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Bundler
+.bundle/
+vendor/bundle/

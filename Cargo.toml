@@ -1,0 +1,21 @@
+[package]
+name = "ballistics-engine-rb"
+version = "0.13.4"
+edition = "2021"
+authors = ["Alex Jokela <email@tinycomputers.io>"]
+description = "Ruby bindings for ballistics-engine"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ajokela/ballistics-engine-rb"
+
+[lib]
+name = "ballistics_engine_rb"
+crate-type = ["cdylib"]
+
+[dependencies]
+ballistics-engine = "0.13"
+magnus = "0.8"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
