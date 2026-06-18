@@ -1,6 +1,6 @@
 Gem::Specification.new do |spec|
   spec.name          = "ballistics-engine"
-  spec.version       = "0.13.22"
+  spec.version       = "0.17.0"
   spec.authors       = ["Alex Jokela"]
   spec.email         = ["email@tinycomputers.io"]
 
@@ -16,9 +16,13 @@ Gem::Specification.new do |spec|
   spec.metadata["documentation_uri"] = "https://docs.ballistics.rs"
 
   # Specify which files should be added to the gem when it is released.
-  spec.files = Dir["lib/**/*.rb", "README.md", "LICENSE*", "Cargo.toml", "Cargo.lock", "src/**/*.rs"]
+  spec.files = Dir["lib/**/*.rb", "README.md", "LICENSE*", "Cargo.toml", "Cargo.lock", "src/**/*.rs", "extconf.rb"]
   spec.require_paths = ["lib"]
-  spec.extensions = ["Cargo.toml"]
+  # Use the mkmf extension path (extconf.rb) rather than the Cargo.toml builder
+  # so the compiled extension is named after the crate ("ballistics_engine_rb"),
+  # matching the magnus Init symbol. The Cargo.toml builder names it after the
+  # gem ("ballistics-engine"), whose hyphen can't be a Rust/C Init symbol.
+  spec.extensions = ["extconf.rb"]
 
   # Runtime dependencies
   spec.add_dependency "rb_sys", "~> 0.9"
