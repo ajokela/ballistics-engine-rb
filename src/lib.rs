@@ -77,22 +77,24 @@ fn solve_trajectory(ruby: &magnus::Ruby, inputs_hash: RHash) -> Result<RHash, Er
         let humidity: f64 = atm_hash.lookup2("humidity_percent", 50.0)?;
         let altitude_ft: f64 = atm_hash.lookup2("altitude_feet", 0.0)?;
 
-        // Convert to Celsius and other SI units
+        // Convert to the units AtmosphericConditions expects.
         let temp_c = (temp_f - 32.0) * 5.0 / 9.0;
-        let pressure_pa = pressure_inhg * 3386.389;
+        // pressure is hectopascals (hPa/millibars), NOT pascals. 1 inHg = 33.8639 hPa.
+        // (Passing Pa here over-states air density ~100x and crushes the trajectory.)
+        let pressure_hpa = pressure_inhg * 33.8639;
         let altitude_m = altitude_ft * 0.3048;
 
         AtmosphericConditions {
             temperature: temp_c,
-            pressure: pressure_pa,
+            pressure: pressure_hpa,
             humidity,
             altitude: altitude_m,
         }
     } else {
         // Standard ICAO atmosphere
         AtmosphericConditions {
-            temperature: 15.0,  // 15°C (59°F)
-            pressure: 101325.0, // 1 atm in Pa
+            temperature: 15.0, // 15°C (59°F)
+            pressure: 1013.25, // 1 atm in hPa (NOT Pa)
             humidity: 50.0,
             altitude: 0.0,
         }
