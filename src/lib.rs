@@ -26,6 +26,7 @@ fn solve_trajectory(ruby: &magnus::Ruby, inputs_hash: RHash) -> Result<RHash, Er
     let shooting_angle_degrees: f64 = inputs_hash.lookup2("shooting_angle_degrees", 0.0)?;
     let twist_rate_inches: f64 = inputs_hash.lookup2("twist_rate_inches", 10.0)?;
     let is_right_twist: bool = inputs_hash.lookup2("is_right_twist", true)?;
+    let enable_aerodynamic_jump: bool = inputs_hash.lookup2("enable_aerodynamic_jump", false)?;
 
     // Drag model (default to G7)
     let drag_model_str: String = inputs_hash.lookup2("drag_model", "G7")?;
@@ -51,6 +52,7 @@ fn solve_trajectory(ruby: &magnus::Ruby, inputs_hash: RHash) -> Result<RHash, Er
         is_twist_right: is_right_twist,
         caliber_inches: bullet_diameter_inches,
         weight_grains: bullet_weight_grains,
+        enable_aerodynamic_jump,
         ..Default::default()
     };
 
