@@ -1,6 +1,6 @@
 Gem::Specification.new do |spec|
   spec.name          = "ballistics-engine"
-  spec.version       = "0.21.1"
+  spec.version       = "0.21.3"
   spec.authors       = ["Alex Jokela"]
   spec.email         = ["email@tinycomputers.io"]
 
