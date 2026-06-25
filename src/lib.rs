@@ -28,6 +28,13 @@ fn solve_trajectory(ruby: &magnus::Ruby, inputs_hash: RHash) -> Result<RHash, Er
     let is_right_twist: bool = inputs_hash.lookup2("is_right_twist", true)?;
     let enable_aerodynamic_jump: bool = inputs_hash.lookup2("enable_aerodynamic_jump", false)?;
 
+    // Coriolis (Earth-rotation) inputs. Requires latitude_degrees to take effect; with
+    // enable_coriolis + a latitude, shot_direction_degrees (compass bearing, 0=N, 90=E)
+    // drives the lateral drift and the vertical Eotvos term (east lifts, west depresses).
+    let enable_coriolis: bool = inputs_hash.lookup2("enable_coriolis", false)?;
+    let latitude_degrees: Option<f64> = inputs_hash.lookup::<_, Option<f64>>("latitude_degrees")?;
+    let shot_direction_degrees: f64 = inputs_hash.lookup2("shot_direction_degrees", 0.0)?;
+
     // Drag model (default to G7)
     let drag_model_str: String = inputs_hash.lookup2("drag_model", "G7")?;
     let drag_model = match drag_model_str.to_uppercase().as_str() {
@@ -53,6 +60,9 @@ fn solve_trajectory(ruby: &magnus::Ruby, inputs_hash: RHash) -> Result<RHash, Er
         caliber_inches: bullet_diameter_inches,
         weight_grains: bullet_weight_grains,
         enable_aerodynamic_jump,
+        enable_coriolis,
+        latitude: latitude_degrees,
+        shot_azimuth: shot_direction_degrees * DEGREES_TO_RADIANS,
         ..Default::default()
     };
 
