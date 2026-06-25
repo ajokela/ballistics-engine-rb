@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # Build the source gem and compile + load + smoke-test it. The rb-sys extension
+  # compiles against the `ballistics-engine` crate from crates.io, so this validates
+  # the binding end-to-end (including the directional-Coriolis exposure) on install.
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby: ['3.1', '3.2', '3.3']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install clang (rb-sys bindgen needs libclang)
+        run: sudo apt-get update && sudo apt-get install -y clang libclang-dev
+
+      - name: Set up Ruby ${{ matrix.ruby }}
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+
+      - name: Build gem
+        run: gem build ballistics-engine.gemspec
+
+      - name: Install gem (compiles the rb-sys extension)
+        run: gem install ./ballistics-engine-*.gem
+
+      - name: Smoke + directional-Coriolis test
+        run: ruby test/ci_smoke.rb
