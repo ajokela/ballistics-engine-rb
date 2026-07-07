@@ -1,83 +1,57 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
+#
+# Demonstration of the BallisticsEngine hash API. Run after building the extension:
+#   rake compile && ruby -Ilib test_bindings.rb
 
-require_relative 'lib/ballistics_engine'
+require_relative "lib/ballistics_engine"
 
-puts "Testing Ballistics Engine Ruby Bindings"
-puts "=" * 50
+puts "BallisticsEngine #{BallisticsEngine::VERSION}"
+puts "=" * 60
 
-# Test 1: Basic trajectory calculation
-puts "\n1. Basic trajectory calculation (168gr .308 Winchester)"
-inputs = BallisticsEngine::BallisticInputs.new(
-  0.223,      # BC (G7)
-  168.0,      # bullet weight (grains)
-  2650.0,     # muzzle velocity (fps)
-  0.308,      # bullet diameter (inches)
-  1.2,        # bullet length (inches)
-  1.5,        # sight height (inches)
-  100.0,      # zero distance (yards)
-  0.0,        # shooting angle (degrees)
-  11.25,      # twist rate (inches)
-  true        # right-hand twist
-)
+inputs = {
+  "bc"                     => 0.223,
+  "bullet_weight_grains"   => 168.0,
+  "muzzle_velocity_fps"    => 2650.0,
+  "bullet_diameter_inches" => 0.308,
+  "bullet_length_inches"   => 1.2,
+  "sight_height_inches"    => 1.5,
+  "zero_distance_yards"    => 1000.0,
+  "drag_model"             => "G7"
+}
 
-puts inputs.to_s
+puts "\n1. Trajectory"
+r = BallisticsEngine.solve(inputs)
+puts "   max range:       #{r['max_range_yards'].round(1)} yd"
+puts "   time of flight:  #{r['time_of_flight'].round(3)} s"
+puts "   impact velocity: #{r['impact_velocity_fps'].round(1)} fps"
+puts "   points:          #{r['points'].length}"
 
-# Create solver without wind/atmosphere (uses defaults)
-solver = BallisticsEngine::TrajectorySolver.new(inputs, nil, nil)
-result = solver.solve
+puts "\n2. Velocity-dependent BC (bc_segments)"
+seg = BallisticsEngine.solve(inputs.merge(
+  "use_bc_segments"  => true,
+  "bc_segments_data" => [
+    { "velocity_min_fps" => 1800.0, "velocity_max_fps" => 4000.0, "bc" => 0.223 },
+    { "velocity_min_fps" => 1200.0, "velocity_max_fps" => 1800.0, "bc" => 0.205 }
+  ]
+))
+puts "   impact velocity: #{seg['impact_velocity_fps'].round(1)} fps (vs #{r['impact_velocity_fps'].round(1)} flat)"
 
-puts "\nResults (no wind):"
-puts "  Max range: #{result.max_range_yards.round(1)} yards"
-puts "  Max height: #{result.max_height_yards.round(2)} yards"
-puts "  Time of flight: #{result.time_of_flight.round(3)} seconds"
-puts "  Impact velocity: #{result.impact_velocity_fps.round(1)} fps"
-puts "  Impact energy: #{result.impact_energy_ftlbs.round(1)} ft-lbs"
-puts "  Number of points: #{result.points.length}"
+puts "\n3. Segmented wind"
+w = BallisticsEngine.solve(inputs.merge(
+  "wind_segments" => [[5.0, 90.0, 500.0], [10.0, 90.0, 1000.0]]
+))
+puts "   windage at impact: #{w['points'].last['z'].round(2)} yd"
 
-# Test 2: Trajectory with wind
-puts "\n2. Trajectory with wind (10 mph from right)"
-wind = BallisticsEngine::WindConditions.new(10.0, 90.0)
-solver_wind = BallisticsEngine::TrajectorySolver.new(inputs, wind, nil)
-result_wind = solver_wind.solve
+puts "\n4. Zero angle"
+z = BallisticsEngine.calculate_zero_angle(inputs.merge("target_distance_yards" => 1000.0))
+puts "   zero angle: #{z['zero_angle_moa'].round(2)} MOA"
 
-puts "\nResults (with wind):"
-puts "  Max range: #{result_wind.max_range_yards.round(1)} yards"
-puts "  Time of flight: #{result_wind.time_of_flight.round(3)} seconds"
-puts "  Impact velocity: #{result_wind.impact_velocity_fps.round(1)} fps"
+puts "\n5. Monte Carlo"
+mc = BallisticsEngine.monte_carlo(inputs.merge(
+  "num_simulations" => 500, "velocity_std_dev_fps" => 10.0, "target_distance_yards" => 1000.0
+))
+puts "   simulations:     #{mc['num_simulations']}"
+puts "   hit probability: #{(mc['hit_probability'] * 100).round(1)}%"
 
-# Test 3: Custom atmospheric conditions
-puts "\n3. Custom atmospheric conditions (high altitude, cold)"
-atmosphere = BallisticsEngine::AtmosphericConditions.new(
-  20.0,       # temperature (F)
-  25.84,      # pressure (inHg) - ~5000ft elevation
-  30.0,       # humidity (%)
-  5000.0      # altitude (feet)
-)
-solver_altitude = BallisticsEngine::TrajectorySolver.new(inputs, nil, atmosphere)
-result_altitude = solver_altitude.solve
-
-puts "\nResults (high altitude):"
-puts "  Max range: #{result_altitude.max_range_yards.round(1)} yards"
-puts "  Impact velocity: #{result_altitude.impact_velocity_fps.round(1)} fps"
-
-# Test 4: Trajectory point details
-puts "\n4. Sample trajectory points (every 100 yards):"
-puts "  Range(yd)  Drop(yd)   Drift(yd)  Velocity(fps)  Energy(ft-lbs)"
-result_wind.points.each do |point|
-  if point.x % 100.0 < 1.0  # Close to 100 yard intervals
-    puts "  #{point.x.round(0).to_s.rjust(8)}  " \
-         "#{point.y.round(2).to_s.rjust(8)}  " \
-         "#{point.z.round(2).to_s.rjust(9)}  " \
-         "#{point.velocity_fps.round(1).to_s.rjust(13)}  " \
-         "#{point.energy_ftlbs.round(1).to_s.rjust(13)}"
-  end
-end
-
-# Test 5: Drag models
-puts "\n5. Testing drag models"
-puts "  G1: #{BallisticsEngine::DragModel.g1.to_s}"
-puts "  G7: #{BallisticsEngine::DragModel.g7.to_s}"
-puts "  G8: #{BallisticsEngine::DragModel.g8.to_s}"
-
-puts "\n✓ All tests passed!"
+puts "\nDone."

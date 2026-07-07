@@ -33,165 +33,120 @@ $ gem install ballistics-engine
 
 ## Quick Start
 
+The API is hash-in / hash-out — pass a hash of imperial-unit parameters, get a hash back.
+
 ```ruby
 require 'ballistics_engine'
 
-# Create ballistic inputs (168gr .308 Winchester)
-inputs = BallisticsEngine::BallisticInputs.new(
-  0.223,      # BC (G7)
-  168.0,      # bullet weight (grains)
-  2650.0,     # muzzle velocity (fps)
-  0.308,      # bullet diameter (inches)
-  1.2,        # bullet length (inches)
-  1.5,        # sight height (inches)
-  100.0,      # zero distance (yards)
-  0.0,        # shooting angle (degrees)
-  11.25,      # twist rate (inches)
-  true        # right-hand twist
+# 168gr .308 with a 10 mph crosswind
+result = BallisticsEngine.solve(
+  "bc"                     => 0.223,   # G7 BC
+  "bullet_weight_grains"   => 168.0,
+  "muzzle_velocity_fps"    => 2650.0,
+  "bullet_diameter_inches" => 0.308,
+  "bullet_length_inches"   => 1.2,
+  "sight_height_inches"    => 1.5,
+  "zero_distance_yards"    => 100.0,
+  "drag_model"             => "G7",    # G1 | G7 | G8
+  "wind"       => { "speed_mph" => 10.0, "direction_degrees" => 90.0 },
+  "atmosphere" => { "temperature_f" => 59.0, "pressure_inhg" => 29.92,
+                    "humidity_percent" => 50.0, "altitude_feet" => 0.0 }
 )
 
-# Optional: Add wind conditions
-wind = BallisticsEngine::WindConditions.new(
-  10.0,       # speed (mph)
-  90.0        # direction (degrees, 90 = from right)
-)
-
-# Optional: Add atmospheric conditions
-atmosphere = BallisticsEngine::AtmosphericConditions.new(
-  59.0,       # temperature (F)
-  29.92,      # pressure (inHg)
-  50.0,       # humidity (%)
-  0.0         # altitude (feet)
-)
-
-# Create solver and calculate trajectory
-solver = BallisticsEngine::TrajectorySolver.new(inputs, wind, atmosphere)
-result = solver.solve
-
-# Access results
-puts "Max range: #{result.max_range_yards.round(1)} yards"
-puts "Time of flight: #{result.time_of_flight.round(3)} seconds"
-puts "Impact velocity: #{result.impact_velocity_fps.round(1)} fps"
-puts "Impact energy: #{result.impact_energy_ftlbs.round(1)} ft-lbs"
-
-# Iterate through trajectory points
-result.points.each do |point|
-  puts "Range: #{point.x.round(1)}yd, Drop: #{point.y.round(2)}yd, Velocity: #{point.velocity_fps.round(1)}fps"
+puts "Max range:       #{result['max_range_yards'].round(1)} yd"
+puts "Time of flight:  #{result['time_of_flight'].round(3)} s"
+puts "Impact velocity: #{result['impact_velocity_fps'].round(1)} fps"
+result["points"].each do |p|
+  puts "  range #{p['x'].round(1)}yd  drop #{p['y'].round(2)}yd  vel #{p['velocity_fps'].round(1)}fps"
 end
+```
+
+### Velocity-dependent BC (`bc_segments`)
+
+Supply your own velocity:BC ladder (velocities in fps). The BC applies while the bullet's
+current speed is in `[velocity_min_fps, velocity_max_fps)`:
+
+```ruby
+BallisticsEngine.solve(inputs.merge(
+  "use_bc_segments"  => true,
+  "bc_segments_data" => [
+    { "velocity_min_fps" => 1800.0, "velocity_max_fps" => 4000.0, "bc" => 0.243 },
+    { "velocity_min_fps" => 1500.0, "velocity_max_fps" => 1800.0, "bc" => 0.228 },
+    { "velocity_min_fps" => 1200.0, "velocity_max_fps" => 1500.0, "bc" => 0.205 }
+  ]
+))
+# Also accepts [vmin_fps, vmax_fps, bc] triples.
+```
+
+### Segmented wind (`wind_segments`)
+
+Distance-keyed wind (independent of the velocity-keyed BC above) — e.g. downrange sensors:
+
+```ruby
+BallisticsEngine.solve(inputs.merge(
+  # [speed_mph, angle_degrees, until_yards]  (angle 90 = from the right)
+  "wind_segments" => [[5.0, 90.0, 150.0], [7.0, 90.0, 300.0], [9.0, 90.0, 1000.0]]
+))
+```
+
+### Zero angle and Monte Carlo
+
+```ruby
+z = BallisticsEngine.calculate_zero_angle(inputs.merge("target_distance_yards" => 1000.0))
+puts "zero: #{z['zero_angle_moa'].round(2)} MOA"
+
+mc = BallisticsEngine.monte_carlo(inputs.merge(
+  "num_simulations"      => 1000,
+  "velocity_std_dev_fps" => 10.0,
+  "bc_std_dev"           => 0.01,
+  "target_distance_yards"=> 1000.0
+))
+puts "hit probability: #{(mc['hit_probability'] * 100).round(1)}%"
 ```
 
 ## API Reference
 
-### Classes
+All functions live on the `BallisticsEngine` module and take a single hash with **string
+keys** in imperial units. Unknown keys are ignored; only the seven marked required are needed.
 
-#### `BallisticInputs`
+### `BallisticsEngine.solve(hash) => hash`
 
-Ballistic calculation parameters.
+**Required:** `bc`, `bullet_weight_grains`, `muzzle_velocity_fps`, `bullet_diameter_inches`,
+`bullet_length_inches`, `sight_height_inches`, `zero_distance_yards`.
 
-**Constructor:**
-```ruby
-BallisticInputs.new(
-  bc,                       # Ballistic coefficient
-  bullet_weight_grains,     # Bullet weight in grains
-  muzzle_velocity_fps,      # Muzzle velocity in fps
-  bullet_diameter_inches,   # Bullet diameter in inches
-  bullet_length_inches,     # Bullet length in inches
-  sight_height_inches,      # Sight height in inches
-  zero_distance_yards,      # Zero distance in yards
-  shooting_angle_degrees,   # Shooting angle in degrees
-  twist_rate_inches,        # Barrel twist rate in inches
-  is_right_twist            # Right-hand twist? (boolean)
-)
-```
+**Optional (selected):**
+- Aim/geometry: `drag_model`("G7"), `shooting_angle_degrees`, `muzzle_angle_degrees`,
+  `twist_rate_inches`(10), `is_right_twist`(true), `muzzle_height_inches`, `target_height_inches`.
+- Wind: `wind` = `{speed_mph, direction_degrees}`; `wind_segments` = `[[speed_mph, angle_deg, until_yards], ...]`.
+- Atmosphere: `atmosphere` = `{temperature_f, pressure_inhg, humidity_percent, altitude_feet}`.
+- BC: `use_bc_segments`, `bc_segments_data` (see above), `bc_segments` = `[[mach, bc], ...]`.
+- Coriolis: `enable_coriolis`, `latitude_degrees`, `shot_direction_degrees`.
+- Physics flags: `enable_advanced_effects`, `enable_magnus`, `enable_aerodynamic_jump`,
+  `use_enhanced_spin_drift`, `use_form_factor`, `use_cluster_bc`, `enable_pitch_damping`,
+  `enable_precession_nutation`, `enable_wind_shear` (+ `wind_shear_model`), `use_rk4`, `use_adaptive_rk45`.
+- Powder: `use_powder_sensitivity`, `powder_temp_sensitivity`, `powder_temp_f`,
+  `powder_temp_curve` = `[[temp_f, velocity_fps], ...]`, `powder_curve_temp_f`.
+- Sampling/solver: `enable_trajectory_sampling`, `sample_interval_yards`, `max_range_yards`, `time_step_seconds`.
 
-**Attributes:**
-- All constructor parameters are accessible as read/write attributes
+**Returns:** `max_range_yards`, `max_height_yards`, `time_of_flight`, `impact_velocity_fps`,
+`impact_energy_ftlbs`, `points` (array of `{time, x, y, z, velocity_fps, energy_ftlbs}` — x=range,
+y=drop, z=windage, in yards). Present when enabled: `sampled_points`, `aerodynamic_jump`,
+`angular_state`, `max_yaw_angle_rad`, `max_precession_angle_rad`, `min_pitch_damping`, `transonic_mach`.
 
-#### `WindConditions`
+### `BallisticsEngine.calculate_zero_angle(hash) => hash`
 
-Wind parameters.
+Same bullet keys as `solve`, plus **required** `target_distance_yards` (and optional
+`target_height_inches`, `wind`, `atmosphere`). Returns `zero_angle_radians`,
+`zero_angle_degrees`, `zero_angle_moa`. Raises on non-convergence.
 
-**Constructor:**
-```ruby
-WindConditions.new(
-  speed_mph,               # Wind speed in mph
-  direction_degrees        # Wind direction in degrees (0=headwind, 90=from right)
-)
-```
+### `BallisticsEngine.monte_carlo(hash) => hash`
 
-**Attributes:**
-- `speed_mph` - Wind speed in mph (read/write)
-- `direction_degrees` - Wind direction in degrees (read/write)
-
-#### `AtmosphericConditions`
-
-Atmospheric parameters.
-
-**Constructor:**
-```ruby
-AtmosphericConditions.new(
-  temperature_f,           # Temperature in Fahrenheit
-  pressure_inhg,           # Pressure in inches of mercury
-  humidity_percent,        # Relative humidity (0-100)
-  altitude_feet            # Altitude in feet
-)
-```
-
-**Attributes:**
-- `temperature_f` - Temperature in Fahrenheit (read/write)
-- `pressure_inhg` - Pressure in inHg (read/write)
-- `humidity_percent` - Humidity percentage (read/write)
-- `altitude_feet` - Altitude in feet (read/write)
-
-#### `TrajectorySolver`
-
-Trajectory calculation engine.
-
-**Constructor:**
-```ruby
-TrajectorySolver.new(
-  inputs,                  # BallisticInputs object
-  wind = nil,              # WindConditions object (optional)
-  atmosphere = nil         # AtmosphericConditions object (optional)
-)
-```
-
-**Methods:**
-- `solve()` - Calculate trajectory, returns `TrajectoryResult`
-
-#### `TrajectoryResult`
-
-Trajectory calculation results.
-
-**Attributes:**
-- `max_range_yards` - Maximum range in yards
-- `max_height_yards` - Maximum height in yards
-- `time_of_flight` - Time of flight in seconds
-- `impact_velocity_fps` - Impact velocity in fps
-- `impact_energy_ftlbs` - Impact energy in ft-lbs
-- `points` - Array of `TrajectoryPoint` objects
-
-#### `TrajectoryPoint`
-
-Individual point along trajectory.
-
-**Attributes:**
-- `time` - Time in seconds
-- `x` - Downrange distance in yards
-- `y` - Vertical position in yards (relative to line of sight)
-- `z` - Lateral drift in yards
-- `velocity_fps` - Velocity in fps
-- `energy_ftlbs` - Energy in ft-lbs
-
-#### `DragModel`
-
-Ballistic coefficient drag model.
-
-**Class Methods:**
-- `DragModel.g1()` - G1 drag model
-- `DragModel.g7()` - G7 drag model
-- `DragModel.g8()` - G8 drag model
-
+Bullet keys (optionally nested under `base_inputs`) plus std-dev params:
+`num_simulations`(1000), `velocity_std_dev_fps`, `angle_std_dev_radians`, `bc_std_dev`,
+`wind_speed_std_dev_mph`, `azimuth_std_dev_radians`, `target_distance_yards`,
+`base_wind_speed_mph`, `base_wind_direction_degrees`, `hit_radius_inches`(≈11.8).
+Returns `ranges_yards`, `impact_velocities_fps`, `impact_positions`
+(`[{vertical_inches, lateral_inches}, ...]`), `hit_probability`, `num_simulations`.
 ## Development
 
 After checking out the repo, run `bundle install` to install dependencies.
