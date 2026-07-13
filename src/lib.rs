@@ -3,6 +3,7 @@ use ballistics_engine::{
     AtmosphericConditions, BCSegmentData, BallisticInputs, DragModel, MonteCarloParams,
     TrajectorySolver, WindConditions, calculate_zero_angle_with_conditions, run_monte_carlo,
 };
+use ballistics_engine::wind::WindSegment;
 
 // Unit conversion constants
 const GRAINS_TO_KG: f64 = 0.00006479891;
@@ -49,12 +50,12 @@ fn build_wind(h: &RHash) -> Result<WindConditions, Error> {
         Ok(WindConditions {
             speed: opt_f64(&w, "speed_mph", 0.0)? * MPH_TO_MPS,
             direction: opt_f64(&w, "direction_degrees", 0.0)? * DEGREES_TO_RADIANS,
+            // ballistics-engine 0.24.0 added vertical_speed (MBA-728); the Ruby `wind`
+            // sub-hash has no vertical-wind key yet, so leave it at the engine default (0.0).
+            ..Default::default()
         })
     } else {
-        Ok(WindConditions {
-            speed: 0.0,
-            direction: 0.0,
-        })
+        Ok(WindConditions::default())
     }
 }
 
@@ -119,12 +120,18 @@ fn extract_bc_segments_data(h: &RHash) -> Result<Vec<BCSegmentData>, Error> {
     Ok(out)
 }
 
-/// `wind_segments` = array of [speed_mph, angle_degrees, until_yards] -> (km/h, deg, meters).
-fn extract_wind_segments(h: &RHash) -> Result<Vec<(f64, f64, f64)>, Error> {
+/// `wind_segments` = array of [speed_mph, angle_degrees, until_yards] -> engine
+/// `WindSegment` (km/h, deg, meters). ballistics-engine 0.24.0 converted `WindSock` /
+/// `TrajectorySolver::set_wind_segments` from `(f64, f64, f64)` tuples to this named
+/// struct; keep the Ruby-facing arrays as plain 3-number triples and convert at the
+/// boundary via `WindSegment::new`.
+fn extract_wind_segments(h: &RHash) -> Result<Vec<WindSegment>, Error> {
     match h.lookup::<_, Option<Vec<(f64, f64, f64)>>>("wind_segments")? {
         Some(v) => Ok(v
             .into_iter()
-            .map(|(mph, ang, until_yd)| (mph * MPH_TO_KMH, ang, until_yd * YARDS_TO_METERS))
+            .map(|(mph, ang, until_yd)| {
+                WindSegment::new(mph * MPH_TO_KMH, ang, until_yd * YARDS_TO_METERS)
+            })
             .collect()),
         None => Ok(Vec::new()),
     }
