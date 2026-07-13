@@ -15,7 +15,7 @@ name = "ballistics_engine_rb"
 crate-type = ["cdylib"]
 
 [dependencies]
-ballistics-engine = { version = "0.22.11", default-features = false }
+ballistics-engine = { version = "0.23.0", default-features = false }
 magnus = "0.8"
 
 [profile.release]
