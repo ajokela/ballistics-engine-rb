@@ -10,6 +10,8 @@ High-performance ballistics calculations library for Ruby, powered by Rust.
 - **Atmospheric Effects** - Temperature, pressure, humidity, and altitude compensation
 - **Unit Conversion** - Automatic handling of imperial/metric conversions
 - **High Performance** - Rust-based calculations for maximum speed
+- **JSON Command Bridge** - `bridge_call` reaches every engine command (solve, dope
+  cards, profiles, truing) through one versioned JSON envelope
 
 ## Installation
 
@@ -132,6 +134,62 @@ keys** in imperial units. Unknown keys are ignored; only the seven marked requir
 `impact_energy_ftlbs`, `points` (array of `{time, x, y, z, velocity_fps, energy_ftlbs}` — x=range,
 y=drop, z=windage, in yards). Present when enabled: `sampled_points`, `aerodynamic_jump`,
 `angular_state`, `max_yaw_angle_rad`, `max_precession_angle_rad`, `min_pitch_damping`, `transonic_mach`.
+
+### `BallisticsEngine.bridge_call(request_json) => String`
+
+Raw pass-through to the engine's versioned JSON command bridge: one full request
+envelope in as a String, one full response envelope out as a String. Nothing is parsed
+and nothing is raised — the bridge never panics and reports every failure in band as
+`{"ok":false,"error":{...}}`, so the caller owns the envelope.
+
+```ruby
+require "json"
+
+def bridge(command, request)
+  JSON.parse(BallisticsEngine.bridge_call(
+    JSON.generate("api_version" => 1, "command" => command, "request" => request)
+  ))
+end
+
+bridge("meta.version", {})
+# => {"ok"=>true, "api_version"=>1, "engine_version"=>"0.36.1",
+#     "command"=>"meta.version", "result"=>{"engine_version"=>"0.36.1"}}
+
+# Every command reachable in this build:
+bridge("meta.capabilities", {})["result"]["commands"]
+# => ["meta.capabilities", "meta.version", "solve", "card.come_ups", "card.range_table",
+#     "card.wind", "profile.validate", "profile.normalize", "true.fit", "true.wind",
+#     "true.tall_target", "true.dsf", "true.plan", "true.dial_plan", "bc5d.info"]
+```
+
+`command` is one of the names `meta.capabilities` reports; `request` is that command's
+own document. `solve` takes a [solve-json v1](https://github.com/ajokela/ballistics-engine/blob/main/docs/SOLVE_JSON_V1.md)
+document — strict SI units, unknown fields rejected with a JSON path — and is the only
+way to reach fields the hash API above has no key for, such as
+`atmosphere.pressure_reference` (QNH altimeter settings) and
+`corrections.bc5d_table_path`:
+
+```ruby
+r = bridge("solve", {
+  "schema_version" => 1,
+  "projectile" => { "mass_kg" => 0.01134, "diameter_m" => 0.00782,
+                    "drag_model" => "G7", "ballistic_coefficient" => 0.243 },
+  "rifle"      => { "muzzle_velocity_mps" => 823.0, "sight_height_m" => 0.05 },
+  "shot"       => { "max_range_m" => 1000.0, "zero_distance_m" => 100.0 },
+  "atmosphere" => { "altitude_m" => 1200.0, "pressure_pa" => 101_325.0,
+                    "pressure_reference" => "qnh" },
+  "wind"       => { "speed_mps" => 4.4704, "direction_from_rad" => Math::PI / 2 },
+  "solver"     => { "method" => "rk45" },
+  "effects"    => { "wind_shear_model" => "power_law" },
+  "sampling"   => { "interval_m" => 100.0 }
+})
+r["ok"]                                   # => true
+r["result"]["samples"].last["windage_m"]  # => -2.7677...
+```
+
+The `pdf` / `card.pdf` and `profile.import_a7p` commands are compiled out of this gem
+(it builds the engine with `default-features = false`); `meta.capabilities` lists only
+what this build can actually run.
 
 ### `BallisticsEngine.calculate_zero_angle(hash) => hash`
 

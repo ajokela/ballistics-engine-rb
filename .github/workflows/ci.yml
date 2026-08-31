@@ -43,3 +43,6 @@ jobs:
 
       - name: Smoke + directional-Coriolis test
         run: ruby test/ci_smoke.rb
+
+      - name: JSON command bridge test
+        run: ruby test/bridge_call.rb

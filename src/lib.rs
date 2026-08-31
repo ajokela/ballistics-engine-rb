@@ -416,11 +416,38 @@ fn monte_carlo(ruby: &magnus::Ruby, h: RHash) -> Result<RHash, Error> {
     Ok(out)
 }
 
+/// Raw pass-through to the engine's versioned JSON command bridge.
+///
+/// One string in (a full request envelope), one string out (a full response envelope).
+/// This is deliberately NOT a typed wrapper: `ballistics_engine::bridge::bridge_call`
+/// dispatches every bridge command — `meta.capabilities`, `meta.version`, `solve`,
+/// the `card.*` family, `profile.*`, the `true.*` truing family, `bc5d.info` — from
+/// one entry point, so mirroring the per-command DTOs here would be a large surface
+/// that goes stale on every engine release. `solve` in particular is this binding's
+/// only route to `corrections.bc5d_table_path` and `atmosphere.pressure_reference`,
+/// neither of which the hash-based `solve` above reaches; it also reaches
+/// `effects.wind_shear_model` as a validated enum (the hash surface has its own
+/// `enable_wind_shear` / `wind_shear_model` pair, which accepts any string and maps
+/// an unrecognized one to the power law rather than reporting it).
+///
+/// Failures are IN BAND: the bridge is `catch_unwind`-guarded, never panics, and
+/// reports every error as `{"ok":false,"error":{...}}` inside the returned JSON.
+/// So this raises nothing and parses nothing — the caller owns the envelope and
+/// decides whether to `JSON.parse` it.
+///
+///     env = { api_version: 1, command: "meta.version", request: {} }
+///     JSON.parse(BallisticsEngine.bridge_call(JSON.generate(env)))
+///     # => {"ok"=>true, "api_version"=>1, "engine_version"=>"0.36.1", ...}
+fn bridge_call(request_json: String) -> String {
+    ballistics_engine::bridge::bridge_call(&request_json)
+}
+
 #[magnus::init]
 fn init(ruby: &magnus::Ruby) -> Result<(), Error> {
     let module = ruby.define_module("BallisticsEngine")?;
     module.define_module_function("solve", function!(solve_trajectory, 1))?;
     module.define_module_function("calculate_zero_angle", function!(calculate_zero_angle, 1))?;
     module.define_module_function("monte_carlo", function!(monte_carlo, 1))?;
+    module.define_module_function("bridge_call", function!(bridge_call, 1))?;
     Ok(())
 }
