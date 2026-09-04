@@ -437,7 +437,7 @@ fn monte_carlo(ruby: &magnus::Ruby, h: RHash) -> Result<RHash, Error> {
 ///
 ///     env = { api_version: 1, command: "meta.version", request: {} }
 ///     JSON.parse(BallisticsEngine.bridge_call(JSON.generate(env)))
-///     # => {"ok"=>true, "api_version"=>1, "engine_version"=>"0.36.1", ...}
+///     # => {"ok"=>true, "api_version"=>1, "engine_version"=>"0.36.3", ...}
 fn bridge_call(request_json: String) -> String {
     ballistics_engine::bridge::bridge_call(&request_json)
 }

@@ -152,8 +152,8 @@ def bridge(command, request)
 end
 
 bridge("meta.version", {})
-# => {"ok"=>true, "api_version"=>1, "engine_version"=>"0.36.1",
-#     "command"=>"meta.version", "result"=>{"engine_version"=>"0.36.1"}}
+# => {"ok"=>true, "api_version"=>1, "engine_version"=>"0.36.3",
+#     "command"=>"meta.version", "result"=>{"engine_version"=>"0.36.3"}}
 
 # Every command reachable in this build:
 bridge("meta.capabilities", {})["result"]["commands"]
