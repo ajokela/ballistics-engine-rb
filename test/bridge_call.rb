@@ -70,10 +70,10 @@ failures += check(raw.start_with?("{"), "returned String is a JSON document")
 ver = JSON.parse(raw)
 failures += check(ver["ok"] == true, "meta.version envelope is ok")
 failures += check(ver["api_version"] == 1, "envelope api_version is 1")
-failures += check(ver["engine_version"] == "0.36.3",
-                  "meta.version reports engine 0.36.3 (got #{ver["engine_version"].inspect})")
-failures += check(ver["result"]["engine_version"] == "0.36.3",
-                  "meta.version result.engine_version is 0.36.3")
+failures += check(ver["engine_version"] == "0.37.0",
+                  "meta.version reports engine 0.37.0 (got #{ver["engine_version"].inspect})")
+failures += check(ver["result"]["engine_version"] == "0.37.0",
+                  "meta.version result.engine_version is 0.37.0")
 failures += check(BallisticsEngine::VERSION == ver["engine_version"],
                   "gem VERSION #{BallisticsEngine::VERSION} matches the engine it links")
 
