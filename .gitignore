@@ -3,7 +3,15 @@ CLAUDE.md
 
 # Rust build artifacts
 /target/
-Cargo.lock
+
+# Cargo.lock is deliberately NOT ignored. This crate is not a plain library: the
+# gemspec ships the lockfile INSIDE the gem and extconf.rb compiles the extension
+# on the installing machine, so the lock is a build input of the published
+# artifact rather than a local convenience. Untracked, a fresh clone has no lock,
+# `gem build` silently omits it (Dir[] just fails to match), and every install
+# re-resolves dependencies at compile time -- so two installs of the same gem
+# version can be built against different crates. The gemspec now refuses to build
+# without it; this line is what keeps it present.
 
 # Ruby
 *.gem
