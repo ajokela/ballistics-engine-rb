@@ -43,9 +43,9 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "ballistics-engine"
-version = "0.47.1"
+version = "0.48.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7b69427a8661a6c5aa48466ff0f92a8d0f43d0e51a1be24fda3d22471bce851"
+checksum = "9107a91d1664aa5cf4f56244ab5ce7baa07ed37a427bad2a335ad849b2cb8a03"
 dependencies = [
  "getrandom",
  "js-sys",
@@ -65,7 +65,7 @@ dependencies = [
 
 [[package]]
 name = "ballistics_engine_rb"
-version = "0.47.1"
+version = "0.48.0"
 dependencies = [
  "ballistics-engine",
  "magnus",

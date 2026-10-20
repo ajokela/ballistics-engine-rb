@@ -4,7 +4,7 @@ require "ballistics_engine_rb"
 
 # Top-level module for the BallisticsEngine gem
 module BallisticsEngine
-  VERSION = "0.47.1"
+  VERSION = "0.48.0"
 
   class Error < StandardError; end
 end
