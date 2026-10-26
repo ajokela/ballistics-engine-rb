@@ -149,6 +149,27 @@ fn extract_powder_curve(h: &RHash) -> Result<Option<Vec<(f64, f64)>>, Error> {
     }
 }
 
+/// The model `enable_wind_shear` turns on when the hash names none: the CLI's default
+/// `--wind-shear-model` and the profile the C ABI names, since neither lets a caller ask for
+/// shear without getting one.
+const DEFAULT_WIND_SHEAR_MODEL: &str = "power_law";
+
+/// Resolve `wind_shear_model`. A model the hash names, `"none"` included, is kept exactly as
+/// given. When the key is absent (or nil) the default follows the flag: `"power_law"` when
+/// `enable_wind_shear` is set, `"none"` when it is not.
+///
+/// The omitted model used to default to `"none"` whatever the flag said. `TrajectorySolver`,
+/// which every hash entry point here reaches, read that as the power law until engine
+/// 0.49.0; from 0.49.0 it reads `"none"` as no shear, so without this default a hash that
+/// only set the flag would silently lose the shear it has always had.
+fn resolve_wind_shear_model(h: &RHash, enable_wind_shear: bool) -> Result<String, Error> {
+    Ok(match h.lookup::<_, Option<String>>("wind_shear_model")? {
+        Some(model) => model,
+        None if enable_wind_shear => DEFAULT_WIND_SHEAR_MODEL.to_string(),
+        None => "none".to_string(),
+    })
+}
+
 /// Build a fully-populated BallisticInputs from an imperial Ruby hash (imperial -> SI).
 /// Shared by solve, calculate_zero_angle, and monte_carlo.
 fn build_inputs(ruby: &magnus::Ruby, h: &RHash) -> Result<BallisticInputs, Error> {
@@ -157,6 +178,8 @@ fn build_inputs(ruby: &magnus::Ruby, h: &RHash) -> Result<BallisticInputs, Error
     let bullet_weight_grains: f64 = h.fetch("bullet_weight_grains")?;
 
     let bc_seg_data = extract_bc_segments_data(h)?;
+    let enable_wind_shear = opt_bool(h, "enable_wind_shear", false)?;
+    let wind_shear_model = resolve_wind_shear_model(h, enable_wind_shear)?;
 
     let mut inputs = BallisticInputs {
         bc_type: drag_model,
@@ -202,8 +225,8 @@ fn build_inputs(ruby: &magnus::Ruby, h: &RHash) -> Result<BallisticInputs, Error
             .lookup::<_, Option<f64>>("powder_curve_temp_f")?
             .map(|tf| (tf - 32.0) * 5.0 / 9.0),
         // wind shear
-        enable_wind_shear: opt_bool(h, "enable_wind_shear", false)?,
-        wind_shear_model: opt_str(h, "wind_shear_model", "none")?,
+        enable_wind_shear,
+        wind_shear_model,
         // sampling
         enable_trajectory_sampling: opt_bool(h, "enable_trajectory_sampling", false)?,
         // BC segments

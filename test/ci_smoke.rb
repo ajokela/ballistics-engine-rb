@@ -4,6 +4,7 @@
 # crates.io `ballistics-engine` dependency). Exercises the current hash-based
 # BallisticsEngine.solve API and the directional Coriolis exposure.
 
+require "json"
 require "ballistics_engine"
 
 failures = 0
@@ -81,6 +82,47 @@ failures += check(mc["impact_velocities_fps"].all? { |v| v.to_f > 0.0 }, "all mo
 sp = BallisticsEngine.solve(base.merge("enable_trajectory_sampling" => true, "sample_interval_yards" => 100.0))
 failures += check(sp["sampled_points"].is_a?(Array) && !sp["sampled_points"].empty?,
                   "sampled_points populated when sampling enabled (#{sp['sampled_points']&.length} samples)")
+
+# 8. An omitted wind_shear_model follows enable_wind_shear: "power_law" when shear is on
+# (the CLI's default model), "none" when it is off; a model the hash names, "none"
+# included, is kept. A lofted shot, because the boundary layer floors at 1.0 near the
+# ground, so flat fire reads the same with and without shear. Windage is compared at a
+# fixed range so the checks do not depend on where the trajectory ends.
+lofted = base.merge(
+  "muzzle_angle_degrees" => 3.0,
+  "max_range_yards" => 2000.0,
+  "wind" => { "speed_mph" => 10.0, "direction_degrees" => 90.0 }
+)
+def windage_at_1500(hash)
+  BallisticsEngine.solve(hash)["points"].find { |p| p["x"] >= 1500.0 }["z"]
+end
+shear_off = windage_at_1500(lofted)
+shear_on_omitted = windage_at_1500(lofted.merge("enable_wind_shear" => true))
+shear_on_nil = windage_at_1500(lofted.merge("enable_wind_shear" => true, "wind_shear_model" => nil))
+shear_on_power_law = windage_at_1500(lofted.merge("enable_wind_shear" => true, "wind_shear_model" => "power_law"))
+shear_off_omitted = windage_at_1500(lofted.merge("enable_wind_shear" => false))
+failures += check(shear_on_omitted == shear_on_power_law,
+                  "enable_wind_shear with the model omitted applies the power law " \
+                  "(#{shear_on_omitted.round(5)} == #{shear_on_power_law.round(5)} yd)")
+failures += check(shear_on_omitted != shear_off,
+                  "the power law changes lofted windage (#{shear_on_omitted.round(5)} != #{shear_off.round(5)} yd)")
+failures += check(shear_on_nil == shear_on_power_law, "a nil wind_shear_model reads as omitted")
+failures += check(shear_off_omitted == shear_off, "enable_wind_shear false with the model omitted applies no shear")
+
+# An explicit "none" is passed through unchanged. Only engine 0.49.0 and later read it as
+# no shear in TrajectorySolver (earlier engines fell back to the power law), so the
+# physics check waits for that engine.
+engine_version = JSON.parse(BallisticsEngine.bridge_call(
+  JSON.generate("api_version" => 1, "command" => "meta.version", "request" => {})
+))["engine_version"]
+if Gem::Version.new(engine_version) >= Gem::Version.new("0.49.0")
+  shear_on_none = windage_at_1500(lofted.merge("enable_wind_shear" => true, "wind_shear_model" => "none"))
+  failures += check(shear_on_none == shear_off,
+                    "enable_wind_shear with an explicit \"none\" applies no shear " \
+                    "(#{shear_on_none.round(5)} == #{shear_off.round(5)} yd)")
+else
+  puts "skip: explicit \"none\" check needs engine 0.49.0 or later (this build links #{engine_version})"
+end
 
 puts(failures.zero? ? "\nALL CHECKS PASSED" : "\n#{failures} CHECK(S) FAILED")
 exit(failures.zero? ? 0 : 1)

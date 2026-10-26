@@ -126,6 +126,9 @@ keys** in imperial units. Unknown keys are ignored; only the seven marked requir
 - Physics flags: `enable_advanced_effects`, `enable_magnus`, `enable_aerodynamic_jump`,
   `use_enhanced_spin_drift`, `use_form_factor`, `use_cluster_bc`, `enable_pitch_damping`,
   `enable_precession_nutation`, `enable_wind_shear` (+ `wind_shear_model`), `use_rk4`, `use_adaptive_rk45`.
+  Leaving `wind_shear_model` out picks `"power_law"` (the CLI's default model) when
+  `enable_wind_shear` is true and `"none"` when it is false; a model you pass, `"none"`
+  included, is used exactly as given.
 - Powder: `use_powder_sensitivity`, `powder_temp_sensitivity`, `powder_temp_f`,
   `powder_temp_curve` = `[[temp_f, velocity_fps], ...]`, `powder_curve_temp_f`.
 - Sampling/solver: `enable_trajectory_sampling`, `sample_interval_yards`, `max_range_yards`, `time_step_seconds`.
