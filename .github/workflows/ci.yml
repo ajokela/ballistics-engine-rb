@@ -46,3 +46,6 @@ jobs:
 
       - name: JSON command bridge test
         run: ruby test/bridge_call.rb
+
+      - name: Station presence test (typed temperature and pressure fly as typed)
+        run: ruby test/station_presence.rb

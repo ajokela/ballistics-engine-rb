@@ -51,8 +51,9 @@ result = BallisticsEngine.solve(
   "zero_distance_yards"    => 100.0,
   "drag_model"             => "G7",    # G1 | G7 | G8
   "wind"       => { "speed_mph" => 10.0, "direction_degrees" => 90.0 },
-  "atmosphere" => { "temperature_f" => 59.0, "pressure_inhg" => 29.92,
-                    "humidity_percent" => 50.0, "altitude_feet" => 0.0 }
+  # Readings: pass the ones you have and leave the rest out (see "Atmosphere" below).
+  "atmosphere" => { "temperature_f" => 72.0, "pressure_inhg" => 29.31,
+                    "humidity_percent" => 50.0, "altitude_feet" => 600.0 }
 )
 
 puts "Max range:       #{result['max_range_yards'].round(1)} yd"
@@ -121,6 +122,8 @@ keys** in imperial units. Unknown keys are ignored; only the seven marked requir
   `twist_rate_inches`(10), `is_right_twist`(true), `muzzle_height_inches`, `target_height_inches`.
 - Wind: `wind` = `{speed_mph, direction_degrees}`; `wind_segments` = `[[speed_mph, angle_deg, until_yards], ...]`.
 - Atmosphere: `atmosphere` = `{temperature_f, pressure_inhg, humidity_percent, altitude_feet}`.
+  `pressure_inhg` is absolute station pressure, not a sea-level-corrected altimeter setting.
+  See "Atmosphere readings" below.
 - BC: `use_bc_segments`, `bc_segments_data` (see above), `bc_segments` = `[[mach, bc], ...]`.
 - Coriolis: `enable_coriolis`, `latitude_degrees`, `shot_direction_degrees`.
 - Physics flags: `enable_advanced_effects`, `enable_magnus`, `enable_aerodynamic_jump`,
@@ -137,6 +140,20 @@ keys** in imperial units. Unknown keys are ignored; only the seven marked requir
 `impact_energy_ftlbs`, `points` (array of `{time, x, y, z, velocity_fps, energy_ftlbs}` — x=range,
 y=drop, z=windage, in yards). Present when enabled: `sampled_points`, `aerodynamic_jump`,
 `angular_state`, `max_yaw_angle_rad`, `max_precession_angle_rad`, `min_pitch_damping`, `transonic_mach`.
+
+#### Atmosphere readings
+
+A `temperature_f` or `pressure_inhg` key in the `atmosphere` hash is a reading and flies
+exactly as given, whatever its value and whatever the altitude. A real 59 °F or 29.92 inHg
+at 5000 ft flies as 59 °F or 29.92 inHg. Leave a key out (or set it to `nil`) when you have
+no reading. It then defaults to 59 °F / 29.92 inHg, and above 1 m of altitude it flies the
+ICAO standard air at `altitude_feet` instead (about 41 °F and 24.9 inHg at 5000 ft). With no
+`atmosphere` hash at all the shot is at sea level in standard air.
+
+Before engine 0.49.0 the binding could not tell the two apart. At any altitude above 1 m, a
+temperature within 0.1 °C of 15 °C (58.82 to 59.18 °F) or a pressure within 0.5 hPa of
+1013.25 hPa (about 29.906 to 29.936 inHg) was treated as omitted and replaced with standard
+air, even when it was a real reading.
 
 ### `BallisticsEngine.bridge_call(request_json) => String`
 
@@ -197,8 +214,9 @@ what this build can actually run.
 ### `BallisticsEngine.calculate_zero_angle(hash) => hash`
 
 Same bullet keys as `solve`, plus **required** `target_distance_yards` (and optional
-`target_height_inches`, `wind`, `atmosphere`). Returns `zero_angle_radians`,
-`zero_angle_degrees`, `zero_angle_moa`. Raises on non-convergence.
+`target_height_inches`, `wind`, `atmosphere`; atmosphere readings work as for `solve`).
+Returns `zero_angle_radians`, `zero_angle_degrees`, `zero_angle_moa`. Raises on
+non-convergence.
 
 ### `BallisticsEngine.monte_carlo(hash) => hash`
 
@@ -208,6 +226,8 @@ Bullet keys (optionally nested under `base_inputs`) plus std-dev params:
 `base_wind_speed_mph`, `base_wind_direction_degrees`, `hit_radius_inches`(≈11.8).
 Returns `ranges_yards`, `impact_velocities_fps`, `impact_positions`
 (`[{vertical_inches, lateral_inches}, ...]`), `hit_probability`, `num_simulations`.
+It has no atmosphere input: every simulation flies sea-level standard air, and an
+`atmosphere` hash is ignored.
 ## Development
 
 After checking out the repo, run `bundle install` to install dependencies.

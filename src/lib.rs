@@ -1,7 +1,8 @@
 use magnus::{Error, RArray, RHash, function};
 use ballistics_engine::{
     AtmosphericConditions, BCSegmentData, BallisticInputs, DragModel, MonteCarloParams,
-    TrajectorySolver, WindConditions, calculate_zero_angle_with_conditions, run_monte_carlo,
+    StationAtmospherePresence, TrajectorySolver, WindConditions,
+    calculate_zero_angle_with_station_presence, run_monte_carlo,
 };
 use ballistics_engine::wind::WindSegment;
 
@@ -59,25 +60,43 @@ fn build_wind(h: &RHash) -> Result<WindConditions, Error> {
     }
 }
 
-/// Build AtmosphericConditions from an optional `atmosphere` sub-hash. Note:
-/// AtmosphericConditions.humidity is PERCENT (0-100), pressure is hPa, temp is Celsius.
-fn build_atmosphere(h: &RHash) -> Result<AtmosphericConditions, Error> {
+/// Build AtmosphericConditions from an optional `atmosphere` sub-hash, with which of its
+/// temperature and pressure are readings. Note: AtmosphericConditions.humidity is PERCENT
+/// (0-100), pressure is hPa, temp is Celsius.
+///
+/// A `temperature_f` or `pressure_inhg` key that is present (and not nil) is a reading and
+/// flies exactly as given, whatever its value and whatever the altitude. A key left out takes
+/// the 59 °F / 29.92 inHg default and keeps the engine's legacy rule: above 1 m of altitude
+/// the default becomes the ICAO standard air there, as an omitted value always has. With no
+/// `atmosphere` hash nothing is a reading, at sea level.
+fn build_atmosphere(
+    h: &RHash,
+) -> Result<(AtmosphericConditions, StationAtmospherePresence), Error> {
     if let Some(a) = h.lookup::<_, Option<RHash>>("atmosphere")? {
-        let temp_f = opt_f64(&a, "temperature_f", 59.0)?;
-        let pressure_inhg = opt_f64(&a, "pressure_inhg", 29.92)?;
-        Ok(AtmosphericConditions {
-            temperature: (temp_f - 32.0) * 5.0 / 9.0,
-            pressure: pressure_inhg * INHG_TO_HPA,
-            humidity: opt_f64(&a, "humidity_percent", 50.0)?,
-            altitude: opt_f64(&a, "altitude_feet", 0.0)? * FPS_TO_MPS,
-        })
+        let temp_f = a.lookup::<_, Option<f64>>("temperature_f")?;
+        let pressure_inhg = a.lookup::<_, Option<f64>>("pressure_inhg")?;
+        let presence = StationAtmospherePresence::new(temp_f.is_some(), pressure_inhg.is_some());
+        let temp_f = temp_f.unwrap_or(59.0);
+        let pressure_inhg = pressure_inhg.unwrap_or(29.92);
+        Ok((
+            AtmosphericConditions {
+                temperature: (temp_f - 32.0) * 5.0 / 9.0,
+                pressure: pressure_inhg * INHG_TO_HPA,
+                humidity: opt_f64(&a, "humidity_percent", 50.0)?,
+                altitude: opt_f64(&a, "altitude_feet", 0.0)? * FPS_TO_MPS,
+            },
+            presence,
+        ))
     } else {
-        Ok(AtmosphericConditions {
-            temperature: 15.0,
-            pressure: 1013.25,
-            humidity: 50.0,
-            altitude: 0.0,
-        })
+        Ok((
+            AtmosphericConditions {
+                temperature: 15.0,
+                pressure: 1013.25,
+                humidity: 50.0,
+                altitude: 0.0,
+            },
+            StationAtmospherePresence::NEITHER,
+        ))
     }
 }
 
@@ -261,9 +280,10 @@ fn build_inputs(ruby: &magnus::Ruby, h: &RHash) -> Result<BallisticInputs, Error
 fn solve_trajectory(ruby: &magnus::Ruby, h: RHash) -> Result<RHash, Error> {
     let inputs = build_inputs(ruby, &h)?;
     let wind = build_wind(&h)?;
-    let atmosphere = build_atmosphere(&h)?;
+    let (atmosphere, presence) = build_atmosphere(&h)?;
 
-    let mut solver = TrajectorySolver::new(inputs, wind, atmosphere);
+    let mut solver =
+        TrajectorySolver::new_with_station_presence(inputs, wind, atmosphere, presence);
     let segs = extract_wind_segments(&h)?;
     if !segs.is_empty() {
         solver.set_wind_segments(segs);
@@ -361,14 +381,15 @@ fn calculate_zero_angle(ruby: &magnus::Ruby, h: RHash) -> Result<RHash, Error> {
     let target_yd: f64 = h.fetch("target_distance_yards")?;
     let target_h_in: f64 = h.lookup2("target_height_inches", 0.0)?;
     let wind = build_wind(&h)?;
-    let atmosphere = build_atmosphere(&h)?;
+    let (atmosphere, presence) = build_atmosphere(&h)?;
 
-    let rad = calculate_zero_angle_with_conditions(
+    let rad = calculate_zero_angle_with_station_presence(
         inputs,
         target_yd * YARDS_TO_METERS,
         target_h_in * INCHES_TO_METERS,
         wind,
         atmosphere,
+        presence,
     )
     .map_err(|e| {
         Error::new(
